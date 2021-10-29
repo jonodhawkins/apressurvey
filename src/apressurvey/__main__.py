@@ -6,9 +6,9 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import numpy as np
 import os
 import tkinter as tk
+import tkinter.filedialog as tkfiledlg
 import tkinter.messagebox as tkmsg
 import tkinter.simpledialog as tkdlg
-import tkinter.filedialog as tkfiledlg
 from tkinter import ttk
 
 class ApplicationReference:
@@ -98,7 +98,7 @@ class StatusFrame(tk.LabelFrame, ApplicationReference):
         self.batteryFigure.patch.set_facecolor("#F0F0F0")
 
         self.statusLabel = tk.StringVar(value="Not updated.")
-        statusUpdateLabel = ttk.Label(self, textvariable=self.statusLabel)
+        statusUpdateLabel = ttk.Label(self, textvariable=self.statusLabel, wraplength=300)
 
         self.statusTree.grid(padx=8, pady=8, row=0, column=0, sticky=(tk.E + tk.N + tk.S + tk.W))
         statusUpdateLabel.grid(row=2, column=0, sticky=(tk.E + tk.S + tk.W))
@@ -257,7 +257,234 @@ class BurstConfigFrame(tk.LabelFrame, ApplicationReference):
 
     def __init__(self, parent, app=None, *args, **kwargs):
         ApplicationReference.__init__(self, app=app)
-        tk.LabelFrame.__init__(self, parent, title="Burst Config", *args, **kwargs)
+        tk.LabelFrame.__init__(self, parent, text="Radar Config", *args, **kwargs)
+
+        self.averageVariableFrame = self.ConfigVariableFrame(
+            self,
+            row=0,
+            text="# Averages",
+            varClass=tk.IntVar,
+            varDefault=1,
+            entryClass=ttk.Spinbox,
+            entryClassArgs={
+                'width' : 10,
+                'from_' : 1,
+                'to'    : 100
+            }
+        )
+
+        self.subburstVariableFrame = self.ConfigVariableFrame(
+            self,
+            row=1,
+            text="# Subbursts",
+            varClass=tk.IntVar,
+            varDefault=1,
+            entryClass=ttk.Spinbox,
+            entryClassArgs={
+                'width' : 10,
+                'from_' : 1,
+                'to'    : 100
+            }
+        )
+
+        self.attenuatorsVariableFrame = self.ConfigVariableFrame(
+            self,
+            row=2,
+            text="# Attenuators",
+            varClass=tk.IntVar,
+            varDefault=1,
+            entryClass=ttk.Spinbox,
+            entryClassArgs={
+                'width' : 10,
+                'command' : self.updateAttenuators,
+                'from_' : 1,
+                'to'    : 4,
+                'wrap'  : True
+            }
+        )
+    
+        self.rfAttnVariableFrame = self.ConfigVariableFrame(
+            self,
+            row=3,
+            text="RF Attenuation",
+            N=4,
+            varClass=tk.DoubleVar,
+            varDefault=30,
+            entryClass=ttk.Spinbox,
+            entryClassArgs={
+                'width' : 5,
+                'from_' : 0,
+                'to'    : 31.75
+            }
+        )
+
+        self.afGainVariableFrame = self.ConfigVariableFrame(
+            self,
+            row=4,
+            text="AF Gain",
+            N=4,
+            varClass=tk.IntVar,
+            varDefault=-14,
+            entryClass=ttk.Spinbox,
+            entryClassArgs={
+                'values' : (-14, -4, 6),
+                'width' : 5
+            }
+        )
+
+        self.config = None
+
+        self.updateAttenuators()
+
+        ttk.Separator(self, orient="horizontal").grid(column=0, row=5, columnspan=3, padx=8, pady=8, sticky=(tk.E + tk.W))
+
+        self.refreshButton = ttk.Button(self, text="Refresh", command=self.refreshConfig)
+        self.refreshButton.grid(column=0, row=6, columnspan=3, padx=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.updateButton = ttk.Button(self, text="Update", command=self.updateConfig)
+        self.updateButton.grid(column=0, row=7, columnspan=3, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.columnconfigure(0,weight=0)
+        self.columnconfigure(1,weight=0)
+        self.columnconfigure(2,weight=1)
+
+    def updateAttenuators(self, *args):
+
+        self.rfAttnVariableFrame.updateVisible(int(self.attenuatorsVariableFrame.getNthValue(0)))
+        self.afGainVariableFrame.updateVisible(int(self.attenuatorsVariableFrame.getNthValue(0)))
+
+        if self.config != None:
+            for k in range(self.config.nAttenuators):
+                self.rfAttnVariableFrame.setNthValue(k, self.config.rfAttn[k])
+                self.afGainVariableFrame.setNthValue(k, self.config.afGain[k])
+
+    def updateConfig(self):
+        
+        if self.getAPI() == None:
+            tkmsg.showwarning(title="Not connected.", message="Config not updated.")
+        else:
+            try:
+
+                nAttens = self.attenuatorsVariableFrame.getNthValue(0)
+
+                self.config = self.getAPI().radar.config.set(
+                    nAtts=nAttens,
+                    nAverages=self.averageVariableFrame.getNthValue(0),
+                    nBursts=self.subburstVariableFrame.getNthValue(0),
+                    rfAttnSet=[
+                        self.rfAttnVariableFrame.getNthValue(n) for n in range(nAttens)
+                    ],
+                    afGainSet=[
+                        self.afGainVariableFrame.getNthValue(n) for n in range(nAttens)
+                    ]
+                )
+
+            except Exception as e:
+                self.application.systemFrame.setStatusLabel("Error updating burst configuration from radar.")
+                tkmsg.showerror(title=type(e).__name__, message=str(e))
+    
+            self.refreshConfig()
+
+    def refreshConfig(self):
+
+        if self.getAPI() == None:
+            tkmsg.showwarning(title="Not connected.", message="Config not refreshed.")
+        else:
+            try:
+
+                self.config = self.getAPI().radar.config.get()
+
+                # self.averageVariableFrame.status.set("[{:d}]".format(self.config.nAverages))
+                self.averageVariableFrame.setNthValue(0, self.config.nAverages)
+
+                # self.subburstVariableFrame.status.set("[{:d}]".format(self.config.nSubBursts))
+                self.subburstVariableFrame.setNthValue(0, self.config.nSubBursts)
+
+                # self.attenuatorsVariableFrame.status.set("[{:d}]".format(self.config.nAttenuators))
+                self.attenuatorsVariableFrame.setNthValue(0, self.config.nAttenuators)
+
+                # rfStr = "".join([str(rf)+"," for rf in self.config.rfAttn])
+                # self.rfAttnVariableFrame.status.set("[{:s}]".format(rfStr[:-1]))
+
+                # afStr = "".join([str(af)+"," for af in self.config.afGain])
+                # self.afGainVariableFrame.status.set("[{:s}]".format(afStr[:-1]))
+
+                self.updateAttenuators()
+                
+            except Exception as e:
+                self.application.systemFrame.setStatusLabel("Error retrieving burst configuration from radar.")
+                tkmsg.showerror(title=type(e).__name__, message=str(e))
+    
+    class ConfigVariableFrame:
+
+        def __init__(self, parent, row=0, text="Variable", N=1, varDefault = None, varClass=tk.StringVar, entryClass=ttk.Entry, entryClassArgs={}, *args, **kwargs):
+    
+            self.N = N
+
+            self.label = ttk.Label(parent, text=text)
+            self.label.grid(row=row, column=0, padx=8, pady=4, sticky=tk.W)
+            
+            # self.status = tk.StringVar()
+            # self.status.set("[N/A]")
+            # self.statusLabel = ttk.Label(parent, textvariable=self.status)
+            # self.statusLabel.grid(row=row, padx=8, pady=4, column=1, sticky=tk.W)
+
+            self.entryFrame = ttk.Frame(parent)
+            self.entryFrame.grid(row=row, column=1, padx=8, pady=4, sticky=(tk.W+tk.E))
+            
+            self.entry = []
+            self.values = []
+            for k in range(N):
+                print("adding {:d} element".format(k))
+                cValue = varClass()
+                cValue.set(varDefault)
+                cElement = entryClass(self.entryFrame, textvariable=cValue, **entryClassArgs)
+                self.entry.append(cElement)
+                self.values.append(cValue)
+
+            self.updateVisible(N)
+                
+        def updateVisible(self, N):
+
+            print("Updating visible with {:d}".format(N))
+            # Hide all elements
+            for k in range(self.N):
+                self.entry[k].grid_remove()
+
+            if N > self.N:
+                N = self.N
+            
+            if N < 1:
+                N = 1
+
+            for k in range(N):
+                print("Showing {:d}th element".format(k))
+                self.entry[k].grid(row=0, column=k, sticky=(tk.E + tk.W))
+
+        def getNthValue(self, n):
+            return self.values[n].get()
+
+        def setNthValue(self, n, val):
+            self.values[n].set(val)
+
+            
+
+    # class MultipleFieldInput(tk.Frame):
+        
+    #     def __init__(self, parent, text="Label", entryClass=ttk.Entry, N=1, entryKWArgs={}, *args, **kwargs):#
+    #         tk.Frame.__init__(self, parent, *args, **kwargs)
+
+    #         self.label = ttk.Label(self, text=text)
+    #         self.label.grid(column=0, row=0, padx=8, pady=8, sticky=(tk.W))
+
+    #         self.entryElements = []
+    #         for k in range(N):
+    #             cElement = entryClass(self, **entryKWArgs)
+    #             cElement.grid(column=k+1, row=0, padx=8, pady=8, sticky=tk.E)
+    #             self.entryElements.append(cElement)
+
+    #         # self.columnconfigure(0, weight=1)
+    #         # self.columnconfigure(1, weight=1)
 
 
         
@@ -283,20 +510,25 @@ class ApRESSystemFrame(tk.Frame, ApplicationReference):
         self.configFrame = ConfigFrame(self, app=app)
         self.configFrame.grid(padx=8, pady=8, row=1, column=0, columnspan=2, sticky=(tk.N + tk.E + tk.S + tk.W))
 
+        self.radarConfigFrame = BurstConfigFrame(self, app=app)
+        self.radarConfigFrame.grid(padx=8, pady=8, row=2, column=0, columnspan=2, sticky=(tk.N + tk.E + tk.S + tk.W))
+
         self.statusFrame = StatusFrame(self, app=app)
-        self.statusFrame.grid(padx=8, pady=8, row=2, column=0, columnspan=2, sticky=(tk.N + tk.E + tk.S + tk.W))
+        self.statusFrame.grid(padx=8, pady=8, row=3, column=0, columnspan=2, sticky=(tk.N + tk.E + tk.S + tk.W))
 
         self.columnconfigure(0,weight=3)
         self.columnconfigure(1,weight=0)
         self.rowconfigure(0,weight=0)
         self.rowconfigure(1,weight=0)
-        self.rowconfigure(2,weight=1)
+        self.rowconfigure(2,weight=0)
+        self.rowconfigure(3,weight=1)
 
     def connectToRadar(self, *args):
         try:
             self.application.api = apreshttp.API(self.radarAddress.get())
             self.application.api.setKey("18052021")
             self.updateStatus()
+            self.application.systemFrame.radarConfigFrame.refreshConfig()
         except Exception as e:
             self.statusFrame.statusLabel.set("Error connecting to radar.")
             self.application.api = None
@@ -323,6 +555,59 @@ class ApRESSystemFrame(tk.Frame, ApplicationReference):
             self.statusFrame.statusLabel.set("Error connecting to radar.")
             tkmsg.showerror(title=type(e).__name__, message=str(e))
 
+class ApRESTrialBurstFrame(tk.Frame, ApplicationReference):
+
+    def __init__(self, parent, app=None, *args, **kwargs):
+        tk.Frame.__init__(self, parent, *args, **kwargs)
+        ApplicationReference.__init__(self, app=app, *args, **kwargs)
+
+        self.button = ttk.Button(self,text="Do Trial Burst", command=self.doTrialBurst)
+        self.button.grid(row=0, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+        
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=1);
+
+        self.trialFigure = Figure(figsize=(4,1.5))
+        self.trialFigureChirpAx = self.trialFigure.add_subplot(311)
+        self.trialFigureChirpAx.set_title('Raw Chirp Data')
+        self.trialFigureFFTAx = self.trialFigure.add_subplot(312)
+        self.trialFigureFFTAx.set_title('FFT Chirp Data')
+        self.trialFigureHistoAx = self.trialFigure.add_subplot(313)
+        self.trialFigureHistoAx.set_title('Histograms')
+        self.trialFigureCanvas = FigureCanvasTkAgg(self.trialFigure, master=self)
+        self.trialFigureCanvas.draw()
+        self.trialFigureCanvas.get_tk_widget().grid(padx=8, pady=8, row=1, column=0, sticky=(tk.E + tk.N + tk.W + tk.S))
+        self.trialFigure.patch.set_facecolor("#F0F0F0")
+
+    def doTrialBurst(self):
+
+        if self.getAPI() == None:
+            tkmsg.showwarning(title="Not connected", message="Cannot start trial burst.")
+        else:
+            try:
+                self.getAPI().radar.trialBurst(callback=self.updateBurstGraphs, wait=False)
+                self.button['state'] = "disabled"
+            except Exception as e:
+                tkmsg.showerror(title=type(e).__name__, message=str(e))
+                self.button['state'] = "normal"
+
+    def updateBurstGraphs(self, results):
+
+        self.trialFigureChirpAx.clear()
+        self.trialFigureHistoAx.clear()
+
+        for k in range(results.nAttenuators):
+            self.trialFigureChirpAx.plot(results.chirp[k])
+            self.trialFigureFFTAx.semilogx(np.abs(np.fft.rfft(np.array(results.chirp[k])-np.mean(results.chirp[k]))))
+            self.trialFigureHistoAx.plot(results.histogram[k])
+            
+        self.trialFigureChirpAx.set_title('Raw Chirp Data')
+        self.trialFigureFFTAx.set_title('Range Data')
+        self.trialFigureHistoAx.set_title('Histograms')
+        self.trialFigureCanvas.draw()
+        self.button['state'] = "normal"
+
 class ApRESSurveyApplication(tk.Tk):
     
     def __init__(self, *args, **kwargs):
@@ -334,9 +619,16 @@ class ApRESSurveyApplication(tk.Tk):
         self.systemFrame = ApRESSystemFrame(self, app=self)
         # self.systemFrame.pack(expand=1, fill=tk.BOTH)
         self.systemFrame.grid(row=0, column=0, sticky=(tk.W + tk.N + tk.S))
-        ttk.Frame(self).grid(row=0, column=1)
+        
+        self.resultsBook = ttk.Notebook(self)
+        self.resultsBook.grid(row=0, column=1, sticky=(tk.W + tk.N + tk.E + tk.S))
+        
+        # Trial burst frame
+        self.trialBurstFrame = ApRESTrialBurstFrame(self.resultsBook, app=self)
+        
+        self.resultsBook.add(self.trialBurstFrame, text="Trial Burst")
 
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(0, weight=0, minsize=200)
         self.columnconfigure(1, weight=4)
         self.rowconfigure(0, weight=1)
 
