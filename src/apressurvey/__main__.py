@@ -62,7 +62,7 @@ class DatetimeVar(tk.StringVar):
 
 class StatusFrame(tk.LabelFrame, ApplicationReference):
 
-    BATTERY_LOG_SIZE = 1024
+    BATTERY_LOG_SIZE = 256
     BATTERY_LOG_INTERVAL = 5000
     
     def __init__(self, parent, app=None, *args, **kwargs):
@@ -94,7 +94,7 @@ class StatusFrame(tk.LabelFrame, ApplicationReference):
         self.batteryFigureAx = self.batteryFigure.add_subplot(111)
         self.batteryFigureCanvas = FigureCanvasTkAgg(self.batteryFigure, master=self)
         self.batteryFigureCanvas.draw()
-        self.batteryFigureCanvas.get_tk_widget().grid(padx=8, pady=8, row=1, column=0, sticky=(tk.E + tk.N + tk.W + tk.S))
+        self.batteryFigureCanvas.get_tk_widget().grid(padx=8, pady=8, row=3, column=0, sticky=(tk.E + tk.N + tk.W + tk.S))
         self.batteryFigure.patch.set_facecolor("#F0F0F0")
 
         self.statusLabel = tk.StringVar(value="Not updated.")
@@ -562,13 +562,33 @@ class ApRESTrialBurstFrame(tk.Frame, ApplicationReference):
         ApplicationReference.__init__(self, app=app, *args, **kwargs)
 
         self.button = ttk.Button(self,text="Do Trial Burst", command=self.doTrialBurst)
-        self.button.grid(row=0, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
-        
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=0)
-        self.rowconfigure(1, weight=1);
+        self.button.grid(row=0, column=0, padx=8, pady=8, ipadx=8, ipady=8, columnspan=5, sticky=(tk.N + tk.E + tk.S + tk.W))
 
+        ttk.Separator(self, orient="horizontal").grid(column=0, row=1, columnspan=5, padx=8, pady=8, sticky=(tk.E + tk.W))
+        
+        self.freqMin = tk.IntVar(value=0)
+        self.freqMax = tk.IntVar(value=40000)
+        self.freqMinEntry = ttk.Spinbox(self, textvariable=self.freqMin, from_=0, to=40000)
+        self.freqMaxEntry = ttk.Spinbox(self, textvariable=self.freqMax, from_=0, to=40000)
+
+        ttk.Label(self, text="Min. Frequency:").grid(column=0, row=2, padx=8, pady=8, sticky=tk.E)
+        self.freqMinEntry.grid(column=1, row=2, padx=8, pady=8, sticky=(tk.E+tk.W))
+        ttk.Label(self, text="Max Frequency:").grid(column=2, row=2, padx=8, pady=8, sticky=tk.E)
+        self.freqMaxEntry.grid(column=3, row=2, padx=8, pady=8, sticky=(tk.E+tk.W))
+        ttk.Button(self, text="Update").grid(column=4, row=2, padx=8, pady=8, sticky=(tk.E + tk.W))
+
+        ttk.Separator(self, orient="horizontal").grid(column=0, row=3, columnspan=5, padx=8, pady=8, sticky=(tk.E + tk.W))
+        
         self.trialFigure = Figure(figsize=(4,1.5))
+        self.trialFigure.subplots_adjust(
+            left=0.05,
+            bottom=0.05, 
+            right=0.95, 
+            top=0.95, 
+            wspace=0.4, 
+            hspace=0.4
+        )
+        
         self.trialFigureChirpAx = self.trialFigure.add_subplot(311)
         self.trialFigureChirpAx.set_title('Raw Chirp Data')
         self.trialFigureFFTAx = self.trialFigure.add_subplot(312)
@@ -577,8 +597,19 @@ class ApRESTrialBurstFrame(tk.Frame, ApplicationReference):
         self.trialFigureHistoAx.set_title('Histograms')
         self.trialFigureCanvas = FigureCanvasTkAgg(self.trialFigure, master=self)
         self.trialFigureCanvas.draw()
-        self.trialFigureCanvas.get_tk_widget().grid(padx=8, pady=8, row=1, column=0, sticky=(tk.E + tk.N + tk.W + tk.S))
+        self.trialFigureCanvas.get_tk_widget().grid(padx=8, pady=8, row=4, column=0, columnspan=5, sticky=(tk.E + tk.N + tk.W + tk.S))
         self.trialFigure.patch.set_facecolor("#F0F0F0")
+        
+        self.columnconfigure(0, weight=0)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=0)
+        self.columnconfigure(3, weight=1)
+        self.columnconfigure(4, weight=1)
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=0)
+        self.rowconfigure(2, weight=0)
+        self.rowconfigure(3, weight=0)
+        self.rowconfigure(4, weight=1);
 
     def doTrialBurst(self):
 
