@@ -12,20 +12,55 @@ import tkinter.simpledialog as tkdlg
 from tkinter import ttk
 
 class ApplicationReference:
+    """
+    Interface class to store reference to top level application instance.
+    """
 
     def __init__(self, app=None): 
+        """
+        Constructor for ApplicationReference
+
+        :param app: Instance of top level application, defaults to None
+        :type app: apressurvey.ApRESSurveyApplication, optional
+        """
         self.application = app
     
     def setApplication(self, ref):
+        """
+        Sets reference to top-level application
+
+        :param ref: New top-level application reference
+        :type ref: apressurvey.ApRESSurveyApplication
+        """
         self.application = ref
 
     def getApplication(self):
+        """
+        Returns reference to top-level application
+
+        :return: Reference to top-level application, if set.
+        :rtype: apressurvey.ApRESSurveyApplication or None
+        """
         return self.application
 
     def getAPI(self):
+        """
+        Returns reference to API instance of top-level application
+
+        Helpful shorthand instead of calling application.api
+
+        :return: Reference to API for top-level application, if set.
+        :rtype: apreshttp.base.API or None
+        """
         return self.application.api
 
 class DatetimeVar(tk.StringVar):
+    """
+    Originally a class to replace StringVar for storing datetime values
+    in string fields
+    
+    Also contains reference the datetime format used throughout the application.
+    """
 
     DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -61,11 +96,32 @@ class DatetimeVar(tk.StringVar):
             raise ValueError("Input to set should be a datetime object.")
 
 class StatusFrame(tk.LabelFrame, ApplicationReference):
+    """
+    Subclass of LabelFrame to display ApRES status
+
+    LabelFrame displays various housekeeping values of the ApRES, including
+    battery voltage, VAB time and - if available - GPS time, latitude and
+    longitude.
+
+    It also displays a rolling graph of battery voltage to monitor change
+    over time for use in Survey mode.  Constants BATTERY_LOG_SIZE and 
+    BATTERY_LOG_INTERVAL adjust graph behaviour.
+
+    Inherits tk.LabelFrame and ApplicationReference.
+    """
 
     BATTERY_LOG_SIZE = 256
     BATTERY_LOG_INTERVAL = 5000
     
     def __init__(self, parent, app=None, *args, **kwargs):
+        """Creates instance of the StatusFrame class.
+
+        :param parent: reference to containing frame
+        :type parent: tk.Frame or tk.Tk
+        :param app: reference to top-level documentation, defaults to None
+        :type app: apresurvey.ApRESSurveyApplication, optional
+        """
+        
 
         ApplicationReference.__init__(self, app=app)
         tk.LabelFrame.__init__(self, parent, text="Status", *args, **kwargs)
@@ -112,6 +168,9 @@ class StatusFrame(tk.LabelFrame, ApplicationReference):
         self.batteryLogUpdate()
 
     def batteryLogUpdate(self):
+        """
+        Replot battery log graph using most recent data.
+        """
 
         print("Doing battery log update {:f}".format(self.status.batteryVoltage))
         # Shift array back 1
@@ -135,6 +194,9 @@ class StatusFrame(tk.LabelFrame, ApplicationReference):
 
 
     def update(self):
+        """
+        Update tree-view of housekeeping parameters with latest data
+        """
         
         # Delete any existing children
         for child in self.statusTree.get_children():
