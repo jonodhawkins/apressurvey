@@ -1,4 +1,7 @@
+# library for ApRES HTTP control
 import apreshttp
+# library for processing ApRES data
+import apyres
 import datetime
 import matplotlib.pyplot as plt 
 from matplotlib.figure import Figure
@@ -688,18 +691,48 @@ class ApRESTrialBurstFrame(tk.Frame, ApplicationReference):
     def updateBurstGraphs(self, results):
 
         self.trialFigureChirpAx.clear()
+        self.trialFigureFFTAx.clear()
         self.trialFigureHistoAx.clear()
 
+        fmcw_param = apyres.FMCWParameters(
+            fc = (results.stopFrequency + results.startFrequency) / 2,
+            B = (results.stopFrequency - results.startFrequency),
+            T = results.period
+        )
+
         for k in range(results.nAttenuators):
+
+            # Create RangeProfile object for results
+            rp = apyres.RangeProfile.calculate_from_chirp([], np.array(results.chirp[k]), fmcw_param)
+
             self.trialFigureChirpAx.plot(results.chirp[k])
-            self.trialFigureFFTAx.semilogx(np.abs(np.fft.rfft(np.array(results.chirp[k])-np.mean(results.chirp[k]))))
-            self.trialFigureHistoAx.plot(results.histogram[k])
+            self.trialFigureFFTAx.semilogx(20*np.log10(np.abs(rp[0,:])).transpose())
+            self.trialFigureHistoAx.plot(
+                results.histogramVoltage,
+                results.histogram[k],
+                label="AF={:d},RF={:2.2f}".format(results.afGain[k],results.rfAttn[k])
+            )
             
         self.trialFigureChirpAx.set_title('Raw Chirp Data')
         self.trialFigureFFTAx.set_title('Range Data')
         self.trialFigureHistoAx.set_title('Histograms')
+        self.trialFigureHistoAx.legend()
         self.trialFigureCanvas.draw()
         self.button['state'] = "normal"
+
+class ApRESSingleBurstFrame(tk.Frame, ApplicationReference):
+
+    def __init__(self, parent, app=None, *args, **kwargs):
+        tk.Frame.__init__(self, parent, *args, **kwargs)
+        ApplicationReference.__init__(self, app=app, *args, **kwargs)
+
+        self.config = BurstConfigFrame(self, app=app);
+        self.config.grid(row=0, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.button = ttk.Button(self,text="Do Single Burst", command=None)
+        self.button.grid(row=1, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.columnconfigure(0, weight=1)
 
 class ApRESSurveyApplication(tk.Tk):
     
@@ -718,8 +751,10 @@ class ApRESSurveyApplication(tk.Tk):
         
         # Trial burst frame
         self.trialBurstFrame = ApRESTrialBurstFrame(self.resultsBook, app=self)
+        self.singleBurstFrame = ApRESSingleBurstFrame(self.resultsBook, app=self)
         
         self.resultsBook.add(self.trialBurstFrame, text="Trial Burst")
+        self.resultsBook.add(self.singleBurstFrame, text="Single Burst")
 
         self.columnconfigure(0, weight=0, minsize=200)
         self.columnconfigure(1, weight=4)
