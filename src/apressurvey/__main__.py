@@ -1,5 +1,6 @@
 # library for ApRES HTTP control
 import apreshttp
+from apreshttp.base import NotFoundException
 # library for processing ApRES data
 import apyres
 import datetime
@@ -8,6 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 import numpy as np
 import os
+import pathlib
 import tkinter as tk
 import tkinter.filedialog as tkfiledlg
 import tkinter.messagebox as tkmsg
@@ -726,13 +728,175 @@ class ApRESSingleBurstFrame(tk.Frame, ApplicationReference):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         ApplicationReference.__init__(self, app=app, *args, **kwargs)
 
-        self.config = BurstConfigFrame(self, app=app);
-        self.config.grid(row=0, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+        self.pathLabel = ttk.Label(self, text="Survey Path:")
+        self.pathLabel.grid(row=0, column=0, padx=8, pady=8, sticky=(tk.N + tk.S + tk.W))
 
-        self.button = ttk.Button(self,text="Do Single Burst", command=None)
-        self.button.grid(row=1, column=0, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+        self.pathVar = tk.StringVar(value=self.get_default_survey_path())
+        self.pathEntry = ttk.Entry(self, textvariable=self.pathVar)
+        self.pathEntry.grid(row=0, column=1, padx=8, pady=8, sticky=(tk.N + tk.E + tk.W + tk.S))
 
-        self.columnconfigure(0, weight=1)
+        self.pathButton = ttk.Button(self, text="...", command=self.update_survey_path)
+        self.pathButton.grid(row=0, column=2, padx=8, pady=8, sticky=(tk.N + tk.E + tk.S))
+
+        # self.statusLabel = tk.StringVar(value="")
+        # statusUpdateLabel = ttk.Label(self, textvariable=self.statusLabel, wraplength=300)
+
+        self.button = ttk.Button(self,text="Do Single Burst", command=self.do_burst)
+        self.button.grid(row=1, column=0, columnspan=3, padx=8, pady=8, ipadx=8, ipady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.dataFigure = Figure(figsize=(4,0.5))
+        self.dataFigure.subplots_adjust(
+            left=0.05,
+            bottom=0.1, 
+            right=0.95, 
+            # top=0.95, 
+            # wspace=0.4, 
+            # hspace=0.4
+        )
+        
+        self.dataFigureChirpAx = self.dataFigure.add_subplot(121)
+        self.dataFigureChirpAx.set_title('Raw Chirp Data')
+        self.dataFigureFFTAx = self.dataFigure.add_subplot(122)
+        self.dataFigureFFTAx.set_title('Chirp Range Data')
+        self.dataFigureCanvas = FigureCanvasTkAgg(self.dataFigure, master=self)
+        self.dataFigureCanvas.draw()
+        self.dataFigureCanvas.get_tk_widget().grid(row=2, column=0, columnspan=3, padx=8, pady=8, sticky=(tk.E + tk.N + tk.W + tk.S))
+        self.dataFigure.patch.set_facecolor("#F0F0F0")
+
+        self.fileView = ttk.Treeview(self, columns=('filename','lastmodified'), show='headings')
+        self.fileView.heading('filename', text='Filename')
+        self.fileView.heading('lastmodified', text='Last Modified')
+        self.fileView.grid(row=3, column=0, columnspan=3, padx=8, pady=8, sticky=(tk.N + tk.E + tk.S + tk.W))
+
+        self.fileView.bind("<Double-1>", self.load_from_fieldview)
+
+        vsb = tk.Scrollbar(self.fileView, orient="vertical", command=self.fileView.yview)
+        vsb.place(relx=0.978, rely=0, relheight=1, relwidth=0.020)
+
+        self.columnconfigure(0, weight=0)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=0)
+
+        self.rowconfigure(2,weight=1)
+        self.rowconfigure(3,weight=1)
+        
+        # Update treeview contents
+        self.update_file_tree()
+
+    def get_default_survey_path(self):
+        """Return default survey path
+
+        :return: path in user home directory
+        :rtype: str
+        """
+        path_name = pathlib.Path.home() / "ApRES" \
+            / "Survey_{:s}".format( datetime.datetime.now().strftime("%Y-%m-%d"))
+        if not path_name.exists():
+            path_name.mkdir(parents=True)
+        return str(path_name)
+
+    def update_survey_path(self):
+        """Updates the survey path entry field from a file dialog
+        """
+        path = tk.filedialog.askdirectory(initialdir=self.pathVar.get())
+
+        if len(path) > 0:
+            self.pathVar.set(str(pathlib.Path(path)))
+
+        self.update_file_tree()
+
+    def update_file_tree(self):
+        
+        for child in self.fileView.get_children():
+            self.fileView.delete(child)
+
+        path = pathlib.Path(self.pathVar.get())
+
+        filenames = []
+        file_dates = []
+        
+        if path.is_dir():
+            print("Getting files from {:s}".format(str(path)))
+            for f in os.listdir(path):
+                f_path = pathlib.Path(path / f)
+                if f_path.is_file() \
+                and os.path.splitext(f)[1].lower() == ".dat":
+                    print("Adding {:s}".format(f))
+                    file_dates.append(f_path.stat().st_mtime)
+                    filenames.append(f)
+                    # self.fileView.insert("", tk.END, values=(
+                    #     f, 
+                    #     datetime.datetime.fromtimestamp(f_path.stat().st_mtime)))
+
+        # Sort array
+        sort_idx = np.argsort(file_dates)
+
+        for k in reversed(sort_idx):
+            self.fileView.insert("", tk.END, values=(
+                filenames[k], 
+                datetime.datetime.fromtimestamp(file_dates[k])
+            ))
+
+    def do_burst(self):
+        """Do burst using current settings
+        """
+        if self.getAPI() == None:
+            tkmsg.showwarning(title="Not connected", message="Cannot start burst.")
+        else:
+            try:
+                self.button['state'] = "disabled"
+                self.getAPI().radar.burst(callback=self.save_latest_burst, wait=False)
+            except Exception as e:
+                tkmsg.showerror(title=type(e).__name__, message=str(e))
+                self.button['state'] = "normal"
+
+    def save_latest_burst(self, results):
+        """Save file and rename
+        """
+        try:
+            saved_to = self.getAPI().data.download(results.filename, self.pathVar.get());
+
+            saved_path = pathlib.Path(saved_to)
+
+            self.fileView.insert("", 0, values=(
+                saved_path.name,
+                datetime.datetime.now()
+            ))
+
+            # Reset button
+            self.button['state'] = "normal"
+
+            self.load_data(str(saved_path))
+
+        except NotFoundException as e:
+            tkmsg.showerror(title=type(e).__name__, message="File not found.  Check you have installed an SD card?")
+            self.button['state'] = "normal"
+
+    def load_from_fieldview(self, event):
+        item = self.fileView.selection()[0]
+        filename = pathlib.Path(self.pathVar.get()) / self.fileView.item(item)['values'][0]
+        self.load_data(filename)
+
+    def load_data(self, filename):
+        
+        # Load data
+        burst_data = apyres.read(filename, skip_burst=False)
+        # Clear figures
+        self.dataFigureChirpAx.clear()
+        self.dataFigureFFTAx.clear()
+
+        # Plot chirp data
+        self.dataFigureChirpAx.plot(burst_data.chirp_voltage.transpose())
+
+        # Calculate range profile
+        rp = apyres.RangeProfile.calculate_from_chirp([], burst_data.chirp_voltage, burst_data.fmcw_parameters)
+        self.dataFigureFFTAx.plot(20*np.log10(np.abs(rp.transpose())))
+
+        # Set title
+        self.dataFigureChirpAx.set_title('Raw Chirp Data')
+        self.dataFigureFFTAx.set_title('Chirp Range Data')
+
+        self.dataFigureCanvas.draw()
 
 class ApRESSurveyApplication(tk.Tk):
     
